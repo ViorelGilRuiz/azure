@@ -7,10 +7,13 @@ import {causes,defaults,domainOf,domains,guide,modes,objectives,percent,reflecti
 import type {dashboard} from '../lib/store';
 import {reinforcement} from '../lib/reinforcement';
 import {Academy,Flashcards,Knowledge,Labs,StudyPlan} from './learning-panels';
+import {Account} from './account';
+import type {ExamKind} from '../lib/catalog';
 
-type Dashboard=ReturnType<typeof dashboard>;
-const navigation=[['Inicio',House],['Hacer test',ListChecks],['Simulacros',Timer],['Repasar errores',BookOpen],['Desafíos',Trophy],['Estadísticas',ChartNoAxesCombined],['Configuración',Gear],['Qué reforzar',Layers],['Academia',BookOpen],['Plan de estudio',CalendarDays],['Flashcards',Layers],['Laboratorios',Cloud],['Mapa de conocimientos',Layers],['Preparación para el examen',Activity],['Certificaciones',ShieldCheck]] as const;
-const sections=[['Aprendizaje',[0,8,9,10,11]],['Entrenamiento',[1,2,3,4]],['Rendimiento',[12,7,5,13]],['Sistema',[14,6]]] as const;
+type Dashboard=ReturnType<typeof dashboard>&{cloud?:boolean};
+class RequestError extends Error{constructor(readonly status:number,message:string){super(message);}}
+const navigation=[['Inicio',House],['Hacer test',ListChecks],['Simulacros',Timer],['Repasar errores',BookOpen],['Desafíos',Trophy],['Estadísticas',ChartNoAxesCombined],['Configuración',Gear],['Qué reforzar',Layers],['Academia',BookOpen],['Plan de estudio',CalendarDays],['Flashcards',Layers],['Laboratorios',Cloud],['Mapa de conocimientos',Layers],['Preparación para el examen',Activity],['Certificaciones',ShieldCheck],['Mi entrenamiento de hoy',CalendarDays],['Errores superados',Check]] as const;
+const sections=[['Aprendizaje',[0,15,8,9,10,11]],['Entrenamiento',[1,2,3,4]],['Rendimiento',[12,7,16,5,13]],['Sistema',[14,6]]] as const;
 const levelNames=['Cloud Rookie','Azure Explorer','Cloud Practitioner','Infrastructure Specialist','Azure Expert Trainee','Exam Ready'];
 const confidenceLabels=['No tengo ni idea','Tengo dudas','Estoy bastante seguro','Estoy completamente seguro'];
 const clock=(seconds:number)=>Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');
@@ -23,7 +26,7 @@ const practiceLinks=[
 async function api<T>(query='', action?:string,value?:unknown):Promise<T>{
  const res=await fetch('/api/lab'+query,action?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,value})}:{cache:'no-store'});
  const data=await res.json();
- if(!res.ok)throw new Error(data.error??'No se ha podido conectar.');
+ if(!res.ok)throw new RequestError(res.status,data.error??'No se ha podido conectar.');
  return data;
 }
 function Metric({label,value}:{label:string;value:string|number}){return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;}
@@ -32,6 +35,7 @@ function Chart({title,data}:{title:string;data:{day:string;value:number}[]}){
 }
 export default function Home(){
  const [data,setData]=useState<Dashboard>();
+ const [login,setLogin]=useState(false);
  const [settings,setSettings]=useState<Settings>(defaults);
  const [tab,setTab]=useState(0);
  const [session,setSession]=useState<Session>();
@@ -49,12 +53,13 @@ export default function Home(){
  const [difficulty,setDifficulty]=useState(0);
  const [mockTime,setMockTime]=useState(45);
  const [mockCount,setMockCount]=useState(40);
+ const [examKind,setExamKind]=useState<ExamKind>('mixed');
  const [practiceLimit,setPracticeLimit]=useState(0);
  const [lesson,setLesson]=useState(2);
  const [recovery,setRecovery]=useState<Session>();
  const [focused,setFocused]=useState(false);
  function update(d:Dashboard){setData(d);setSettings(d.settings);}
- useEffect(()=>{api<Dashboard>().then(update).catch(e=>setError(e.message));},[]);
+ useEffect(()=>{api<Dashboard>().then(update).catch(e=>{if(e instanceof RequestError&&e.status===401)setLogin(true);else setError(e.message);});},[]);
  useEffect(()=>{const id=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(id);},[]);
  function receive(s:Session,timestamp:number){
   setSession(s);
@@ -63,7 +68,7 @@ export default function Home(){
  }
  async function run(fn:()=>Promise<void>){
   setBusy(true);setError('');setNotice('');
-  try{await fn();}catch(e){setError(e instanceof Error?e.message:'Error inesperado.');}finally{setBusy(false);}
+  try{await fn();}catch(e){if(e instanceof RequestError&&e.status===401){setLogin(true);setData(undefined);setSession(undefined);}else setError(e instanceof Error?e.message:'Error inesperado.');}finally{setBusy(false);}
  }
  async function launch(m:Mode,options:Record<string,unknown>={}){
   setPrevious(undefined);
@@ -114,7 +119,8 @@ export default function Home(){
  const avgSeconds=session&&answered?Math.round(Object.values(session.answers).reduce((sum,a)=>sum+a.seconds,0)/answered):null;
  function toggle(id:string){
   if(!q||!session||busy)return;
-  const selected=q.count===1?[id]:choice.includes(id)?choice.filter(i=>i!==id):[...choice,id];
+  const group=q.choices.find(option=>option.id===id)?.group;
+  const selected=group?[...choice.filter(i=>q.choices.find(option=>option.id===i)?.group!==group),id]:q.count===1?[id]:choice.includes(id)?choice.filter(i=>i!==id):[...choice,id];
   setChoice(selected);
   if(selected.length!==q.count)return;
   const next=session.questions.findIndex((item,i)=>i>session.position&&!session.answers[item.id]);
@@ -146,9 +152,11 @@ export default function Home(){
   if(!f)return null;
   return <div className={'feedback '+(f.correct?'good':'bad')}>
    <strong>{f.correct?'Respuesta correcta':a.choice.length?'Respuesta incorrecta':'Solución'}</strong><p>{f.explain}</p>
-   <ul>{question.choices.map(c=><li key={c.id}><b>{c.text}</b>{a.choice.includes(c.id)?' (tu selección)':''}{f.keys.includes(c.id)?' (correcta)':''}<br/>{f.choices[c.id]}</li>)}</ul>
+   {question.type==='ordenación'?<><p><b>Tu orden.</b> {a.choice.map(id=>question.choices.find(c=>c.id===id)?.text).join(' → ')||'Sin responder'}</p><p><b>Orden correcto.</b> {f.keys.map(id=>question.choices.find(c=>c.id===id)?.text).join(' → ')}</p></>:<ul>{question.choices.map(c=><li key={c.id}><b>{c.group?c.group+' · ':''}{c.text}</b>{a.choice.includes(c.id)?' (tu selección)':''}{f.keys.includes(c.id)?' (correcta)':''}<br/>{f.choices[c.id]}</li>)}</ul>}
    <p><b>Cómo distinguirlo</b> {f.tip}</p>
    <p><b>Ejemplo práctico</b> {reinforcement[question.objective].example}</p>
+   <h3>Cómo razonar esta pregunta en el examen</h3><p>{f.reasoning??f.explain+' '+f.tip}</p>
+   {!f.correct&&a.choice.length>0&&<p><b>Posible confusión.</b> {a.cause!==undefined?causes[a.cause]:a.confidence===3?'Marcaste confianza máxima. Comprueba qué condición del escenario descartaba tu elección.':'Revisa qué requisito debe cumplir el servicio. Puedes indicar qué te llevó al error.'}</p>}
    {a.choice.length>0&&<div className="actions">
     <label>Cómo llegaste a la respuesta <select disabled={busy} value={a.reflection??-1} onChange={e=>annotate(question.id,'reflection',+e.target.value)}><option disabled value={-1}>Sin indicar</option>{reflections.map((label,i)=><option key={label} value={i}>{label}</option>)}</select></label>
     {!f.correct&&<label>Motivo del error <select disabled={busy} value={a.cause??-1} onChange={e=>annotate(question.id,'cause',+e.target.value)}><option disabled value={-1}>Sin clasificar</option>{causes.map((label,i)=><option key={label} value={i}>{label}</option>)}</select></label>}
@@ -156,6 +164,7 @@ export default function Home(){
    <div className="actions"><a href={f.source} target="_blank" rel="noreferrer">Consultar Microsoft Learn</a><button className="secondary" onClick={()=>openLesson(question.objective)}>Abrir microlección</button>{f.related&&<button className="secondary" disabled={busy} onClick={()=>void launch('adaptive',{transfer:f.related})}>Resolver pregunta de transferencia</button>}</div>
   </div>;
  }
+ if(login)return <main className="shell account-shell" data-theme={settings.theme}><Account onSignedIn={async()=>{update(await api<Dashboard>());setLogin(false);setTab(0);}}/></main>;
  return <div className={'shell '+(focused&&session&&!session.finished?'focus-session':'')} data-theme={settings.theme}>
   <aside className="sidebar">
    <div className="brand"><span className="brand-icon"><Cloud size={23}/></span><div>Azure Exam Lab<small>MICROSOFT AZ-900</small></div></div>
@@ -175,6 +184,7 @@ export default function Home(){
    {session && q && (session.finished ?
     <section className="session">
      <h1>Resultados del {modes[session.mode].toLowerCase()}</h1>
+     {session.mode==='mock'&&<p>{session.examKind==='independent'?'Simulacro íntegramente independiente':session.examKind==='repeat'?'Simulacro de repetición':'Simulacro mixto o anterior'}</p>}
      <div className="metrics">
       <Metric label="Aciertos" value={Object.values(session.answers).filter(a=>a.feedback?.correct).length}/>
       <Metric label="Respondidas" value={Object.keys(session.answers).length+'/'+session.questions.length}/>
@@ -205,11 +215,13 @@ export default function Home(){
      <progress aria-label="Preguntas respondidas" value={Object.keys(session.answers).length} max={session.questions.length}/>
      {questionBudget!==null&&<p className="pace">Te quedan unos <b>{questionBudget} s</b> por pregunta pendiente. {questionBudget<45?'Marca las que te lleven más tiempo y vuelve al final.':'Puedes marcar preguntas para revisarlas al final.'}</p>}
      {previous&&previous.question.id!==q.id&&<details key={previous.question.id} className="panel"><summary><span role="status">{previous.answer.feedback?.correct?'Correcta':'Incorrecta'} · Ver explicación de la pregunta anterior</span></summary>{correction(previous.question,previous.answer)}</details>}
-     <div className="panel question" key={q.id}>
+     <div className="panel question" key={q.id} data-question-id={q.id}>
       <div className="session-meta"><span className="eyebrow">{objectives[q.objective]} · {['','Básica','Intermedia','Avanzada'][q.difficulty]}</span><button className="ghost" aria-pressed={session.flags.includes(q.id)} disabled={busy} onClick={()=>void change({flag:q.id})}><Flag size={16}/> {session.flags.includes(q.id)?'Marcada':'Marcar'}</button></div>
       <h1>{q.text}</h1>
-      <fieldset disabled={busy||!!answer&&!deferred}><legend>{q.count===1?'Selecciona una opción':'Selecciona '+q.count+' opciones'}</legend>
-      {q.choices.map((c,i)=><label className={'option '+(choice.includes(c.id)?'selected ':'')+(answer?.feedback?.keys.includes(c.id)?'right':answer?.feedback&&choice.includes(c.id)?'wrong':'')} key={c.id}><input type={q.count===1?'radio':'checkbox'} name={q.id} checked={choice.includes(c.id)} onChange={()=>toggle(c.id)}/><span className="letter">{String.fromCharCode(65+i)}</span>{c.text}</label>)}
+      <fieldset disabled={busy||!!answer&&!deferred}><legend>{q.type==='matriz'?'Responde cada afirmación':q.type==='ordenación'?'Selecciona los elementos en orden':q.count===1?'Selecciona una opción':'Selecciona '+q.count+' opciones'}</legend>
+      {q.type==='matriz'?[...new Set(q.choices.map(c=>c.group))].map((group,i)=><fieldset className="matrix-row" key={group}><legend>{group}</legend>{q.choices.filter(c=>c.group===group).map(c=><label className="option" key={c.id}><input type="radio" name={q.id+'-'+i} checked={choice.includes(c.id)} onChange={()=>toggle(c.id)}/>{c.text}</label>)}</fieldset>):
+       q.type==='ordenación'?q.choices.map(c=><button type="button" className="option" key={c.id} aria-pressed={choice.includes(c.id)} onClick={()=>toggle(c.id)}><span className="letter">{choice.includes(c.id)?choice.indexOf(c.id)+1:'–'}</span>{c.text}</button>):
+       q.choices.map((c,i)=><label className={'option '+(choice.includes(c.id)?'selected ':'')+(answer?.feedback?.keys.includes(c.id)?'right':answer?.feedback&&choice.includes(c.id)?'wrong':'')} key={c.id}><input type={q.count===1?'radio':'checkbox'} name={q.id} checked={choice.includes(c.id)} onChange={()=>toggle(c.id)}/><span className="letter">{String.fromCharCode(65+i)}</span>{c.text}</label>)}
       </fieldset>
       <div className="actions"><label>Confianza antes de responder <select disabled={busy||!!answer&&!deferred} value={confidence} onChange={e=>setConfidence(+e.target.value)}>{confidenceLabels.map((s,i)=><option value={i} key={s}>{s}</option>)}</select></label></div>
       {answer&&deferred&&<p role="status" className="muted"><Check size={16}/> Respuesta guardada</p>}
@@ -232,7 +244,7 @@ export default function Home(){
      <div className="metrics"><Metric label="Días hasta tu objetivo" value={days}/><Metric label="Primer intento" value={stats?.unique?stats.freshRate+' %':'—'}/><Metric label="Preguntas repetidas" value={stats?.repeatCount?stats.repeatRate+' %':'—'}/><Metric label="Minutos respondiendo" value={Math.round((stats?.seconds??0)/60)}/><Metric label="Objetivos evaluados" value={(stats?.coverage??0)+' %'}/><Metric label="Objetivos dominados" value={data.map.filter(m=>m.status==='Dominado').length}/><Metric label="Flashcards disponibles" value={data.cardQueue.length}/><Metric label="Aciertos últimos 7 días" value={stats?.weekly?stats.weeklyRate+' %':'—'}/></div>
      <h2 className="section-title">Tu próxima sesión</h2>
      <div className="lower-grid">
-      <section className="panel"><div className="panel-icon"><CalendarDays size={20}/></div><h3>Plan de hoy</h3><p>{settings.minutes} min · {phase}</p><p>{stats?.total?'Objetivo recomendado: '+objectives[recommendation]:'Empieza con la evaluación inicial para personalizar tu plan.'}</p>{data.plan.calendar.find(day=>day.mode==='mock')&&<p>Próximo simulacro previsto: {data.plan.calendar.find(day=>day.mode==='mock')?.date.split('-').reverse().join('/')}</p>}<button className="primary" disabled={busy} onClick={today}>Comenzar entrenamiento de hoy</button></section>
+      <section className="panel"><div className="panel-icon"><CalendarDays size={20}/></div><h3>Plan de hoy</h3><p>{settings.minutes} min · {phase}</p><p>{stats?.total?'Objetivo recomendado: '+objectives[recommendation]:'Empieza con la evaluación inicial para personalizar tu plan.'}</p>{data.plan.calendar.find(day=>day.mode==='mock')&&<p>Próximo simulacro previsto: {data.plan.calendar.find(day=>day.mode==='mock')?.date.split('-').reverse().join('/')}</p>}<button className="primary" disabled={busy} onClick={()=>navigate(15)}>Comenzar entrenamiento de hoy</button></section>
       <section className="panel"><div className="panel-icon"><Trophy size={20}/></div><h3>Desafío diario</h3><p>{data.dailyDone?'Desafío de hoy completado.':'40 preguntas variadas. Pon a prueba tu precisión.'}</p><button className="secondary" disabled={busy} onClick={()=>void launch('daily')}>{data.dailyDone?'Ver resultado':'Jugar desafío'}</button></section>
       <section className="panel"><div className="panel-icon"><BookOpen size={20}/></div><h3>Sesiones en curso</h3>{data.active.length?data.active.map(s=><button className="ghost" disabled={busy} key={s.id} onClick={()=>void resume(s.id)}>{modes[s.mode]} · {s.count}/{s.total}</button>):<p>Tus sesiones sin entregar aparecerán aquí.</p>}</section>
      </div>
@@ -244,18 +256,18 @@ export default function Home(){
      {mode==='domain'&&<><label>Dominio <select value={domain} onChange={e=>{setDomain(+e.target.value);setObjective(-1);}}>{domains.map((d,i)=><option value={i} key={d}>{d}</option>)}</select></label><label>Subcategoría <select value={objective} onChange={e=>setObjective(+e.target.value)}><option value={-1}>Todas</option>{objectives.map((o,i)=>domainOf(i)===domain&&<option value={i} key={o}>{o}</option>)}</select></label></>}
      {(mode==='quick'||mode==='domain')&&<label>Dificultad <select value={difficulty} onChange={e=>setDifficulty(+e.target.value)}>{['Cualquiera','Básica','Intermedia','Avanzada'].map((d,i)=><option value={i} key={d}>{d}</option>)}</select></label>}
      <button className="primary" disabled={busy}>Empezar test</button></form></section>}
-    {tab===2&&<section className="panel form-panel"><h1>Simulacros</h1><p>Incluye preguntas reservadas cuando estén disponibles. Recibirás la corrección al entregar.</p><form onSubmit={e=>{e.preventDefault();void launch('mock',{minutes:mockTime,count:mockCount});}}><label>Preguntas <select value={mockCount} onChange={e=>setMockCount(+e.target.value)}><option value={40}>40</option><option value={50}>50</option></select></label><label>Duración (minutos) <input type="number" min="1" max="120" value={mockTime} onChange={e=>setMockTime(+e.target.value)} required/></label><button className="primary" disabled={busy}>Comenzar simulacro</button></form><p>Microsoft publica 45 minutos para AZ-900. El aprobado oficial requiere 700 puntos en una escala de hasta 1000. El porcentaje de este simulacro usa las preguntas acertadas y las preguntas totales. <a href="https://learn.microsoft.com/en-us/credentials/support/exam-duration-exam-experience/" target="_blank" rel="noreferrer">Consultar información oficial</a></p></section>}
+    {tab===2&&<section className="panel form-panel"><h1>Simulacros</h1><p>Recibirás la corrección al entregar. Solo un simulacro compuesto íntegramente de preguntas reservadas, revisadas y de familias nuevas cuenta como independiente.</p>{!data.independentAvailable.includes(mockCount)&&<p role="status">El banco disponible aún no permite un simulacro independiente de {mockCount} preguntas.</p>}<form onSubmit={e=>{e.preventDefault();void launch('mock',{minutes:mockTime,count:mockCount,examKind});}}><label>Tipo <select value={examKind} onChange={e=>setExamKind(e.target.value as ExamKind)}><option value="mixed">Mixto</option><option value="independent">Independiente</option><option value="repeat">Repetir último de esta longitud</option></select></label><label>Preguntas <select value={mockCount} onChange={e=>setMockCount(+e.target.value)}><option value={40}>40</option><option value={50}>50</option></select></label><label>Duración (minutos) <input type="number" min="1" max="120" value={mockTime} onChange={e=>setMockTime(+e.target.value)} required/></label><button className="primary" disabled={busy||examKind==='independent'&&!data.independentAvailable.includes(mockCount)}>Comenzar simulacro</button></form><p>Microsoft publica 45 minutos para AZ-900. El aprobado oficial requiere 700 puntos en una escala de hasta 1000. El porcentaje de este simulacro usa las preguntas acertadas y las preguntas totales. <a href="https://learn.microsoft.com/en-us/credentials/support/exam-duration-exam-experience/" target="_blank" rel="noreferrer">Consultar información oficial</a></p></section>}
     {tab===3&&<section className="panel form-panel"><h1>Repasar errores</h1><p>{data.review?data.review+' preguntas entre errores por consolidar y repasos pendientes.':'La cola está al día. Los errores y repasos programados aparecerán aquí.'}</p><button className="primary" disabled={busy||!data.review} onClick={()=>void launch('review')}>Empezar repaso</button></section>}
     {tab===4&&<><section className="panel"><h1>Desafíos</h1><p>{levelNames[(stats?.level??1)-1]} · {stats?.xp??0} XP · Racha de {stats?.streak??0} días</p><p>Objetivo semanal de práctica: {stats?.weekly??0}/100 respuestas.</p><progress aria-label="Objetivo semanal" value={Math.min(100,stats?.weekly??0)} max={100}/><p>{stats?.latestDaily.length?'Último desafío: '+stats.latestDaily[0]+' %'+(stats.latestDaily.length>1?' · Anterior: '+stats.latestDaily[1]+' %':''):'Completa el desafío para registrar tu primer resultado.'}</p><button className="primary" disabled={busy} onClick={()=>void launch('daily')}>{data.dailyDone?'Ver desafío de hoy':'Jugar desafío diario'}</button></section><section className="panel"><h2>Logros</h2><ul>{[[!!stats?.tests,'Primer test completado'],[(stats?.total??0)>=100,'100 preguntas respondidas'],[(stats?.longest??0)>=7,'Siete días consecutivos'],[!!stats?.mocks.some(m=>m.value>=80),'Simulacro con al menos 80 %']].map(([earned,label])=><li key={String(label)}>{earned?'Conseguido':'Pendiente'} · {label}</li>)}</ul></section></>}
     {tab===5&&stats&&<><h1>Estadísticas</h1><div className="metrics">{[['Sesiones',stats.tests],['Respuestas',stats.total],['Preguntas únicas',stats.unique],['Correctas',stats.correct],['Incorrectas',stats.total-stats.correct],['Aciertos',stats.rate+' %'],['Últimos 5 tests',stats.average+' %'],['Mejor resultado',stats.best+' %'],['Tiempo de práctica',Math.round(stats.seconds/60)+' min'],['Tiempo medio',stats.pace+' s'],['Racha máxima',stats.longest+' días'],['Cobertura evaluada',stats.coverage+' %']].map(([label,value])=><Metric key={label} label={String(label)} value={value}/>)}</div>
-     <section className="panel"><h2>Informe de los últimos 7 días</h2><p>{stats.weekly?stats.weekly+' respuestas · '+stats.weeklyRate+' % de aciertos.':'Aún no hay respuestas en este periodo.'}</p><p>{data.map.reduce((sum,row)=>sum+row.retained,0)} preguntas con evidencia de recuperación en días distintos.</p><a className="secondary" href="/api/lab?csv">Descargar informe CSV</a></section>
+     <section className="panel"><h2>Mi evolución como profesional Azure</h2><p>{stats.weekly?stats.weekly+' respuestas · '+stats.weeklyRate+' % de aciertos en los últimos 7 días.':'Aún no hay respuestas en los últimos 7 días.'}</p><p>{data.map.reduce((sum,row)=>sum+row.retained,0)} preguntas con evidencia de recuperación en días distintos.</p><table className="learn-table"><thead><tr><th>Corte</th><th>Respuestas acumuladas</th><th>Aciertos acumulados</th></tr></thead><tbody>{data.trend.map((item,i)=><tr key={i}><td>{['Hoy','Hace 7 días','Hace 14 días','Hace 30 días'][i]}</td><td>{item?.total??'Sin datos'}</td><td>{item?item.accuracy+' %':'Sin datos'}</td></tr>)}</tbody></table><p><a className="secondary" href="/api/lab?csv">Descargar informe CSV</a></p></section>
      <div className="lower-grid"><Chart title="Últimos 30 días" data={stats.daily}/><Chart title="Simulacros recientes" data={stats.mocks}/></div>
      <section className="panel"><h2>Rendimiento por dificultad</h2>{stats.byDifficulty.map((d,i)=><p key={i}>{['Básica','Intermedia','Avanzada'][i]} · {d.count?d.value+' % en '+d.count+' respuestas':'Sin respuestas'}</p>)}</section>
      <section className="panel"><h2>Exam Readiness · {stats.readiness}/100</h2><p>{stats.status} · Indicador interno de entrenamiento</p><ul>{stats.requirements.map(r=><li key={r.text}>{r.met?'Cumplido':'Pendiente'} · {r.text}</li>)}</ul></section>
      <section className="panel"><h2>Diagnóstico por objetivo</h2><p>{stats.overconfidence} errores con confianza máxima. {stats.pace>54?'Practica la velocidad con Contrarreloj.':''}</p>{domains.map((d,i)=><p key={d}><b>{d}</b> · {stats.domains[i]} %</p>)}<div className="objective-grid">{stats.objectives.map(o=><div key={o.i}><b>{objectives[o.i]}</b><span>{o.state} · {o.unique} únicas · {o.errors} errores recientes</span></div>)}</div><button className="secondary" disabled={busy} onClick={()=>void launch('adaptive',{objective:recommendation})}>Practicar {objectives[recommendation]}</button></section>
      <section className="panel"><h2>Sesiones recientes</h2>{data.history.length?data.history.map(s=><button className="ghost" disabled={busy} key={s.id} onClick={()=>void resume(s.id)}>{modes[s.mode]} · {s.score} %</button>):<p>Completa tu primer test para consultar sus resultados aquí.</p>}</section></>}
-    {tab===6&&<><section className="panel form-panel"><h1>Configuración</h1><form onSubmit={e=>{e.preventDefault();void run(async()=>{update(await api<Dashboard>('','settings',settings));setNotice('Configuración guardada.');});}}><label>Fecha objetivo provisional <input type="date" required value={settings.target} onChange={e=>setSettings({...settings,target:e.target.value})}/></label><label>Dedicación diaria <select value={settings.minutes} onChange={e=>setSettings({...settings,minutes:+e.target.value})}>{[10,15,20,30,45,60].map(n=><option key={n} value={n}>{n} minutos</option>)}</select></label><label>Aspecto <select value={settings.theme} onChange={e=>setSettings({...settings,theme:e.target.value as Settings['theme']})}><option value="dark">Oscuro</option><option value="light">Claro</option></select></label><button className="primary" disabled={busy}>Guardar configuración</button></form></section>
-    <section className="panel"><h2>Progreso local</h2><div className="actions"><a className="secondary" href="/api/lab?export">Exportar JSON</a><a className="secondary" href="/api/lab?backup">Descargar copia SQLite</a><label>Importar progreso JSON <input type="file" accept=".json,application/json" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file&&confirm('Se añadirán las sesiones y los repasos que falten y se aplicarán las preferencias del archivo. ¿Importar?'))void run(async()=>{update(await api<Dashboard>('','import',JSON.parse(await file.text())));setNotice('Progreso importado.');});}}/></label></div></section>
+    {tab===6&&<><section className="panel form-panel"><h1>Configuración</h1><form onSubmit={e=>{e.preventDefault();void run(async()=>{update(await api<Dashboard>('','settings',settings));setNotice('Configuración guardada.');});}}><label>Fecha objetivo provisional <input type="date" required value={settings.target} onChange={e=>setSettings({...settings,target:e.target.value})}/></label><label>Dedicación diaria <select value={settings.minutes} onChange={e=>setSettings({...settings,minutes:+e.target.value})}>{[10,15,20,30,45,60,90].map(n=><option key={n} value={n}>{n} minutos</option>)}</select></label><label>Aspecto <select value={settings.theme} onChange={e=>setSettings({...settings,theme:e.target.value as Settings['theme']})}><option value="dark">Oscuro</option><option value="light">Claro</option></select></label><button className="primary" disabled={busy}>Guardar configuración</button></form></section>
+    <section className="panel"><h2>Progreso local</h2><div className="actions"><a className="secondary" href="/api/lab?export">Exportar JSON</a>{!data.cloud&&<a className="secondary" href="/api/lab?backup">Descargar copia SQLite</a>}{data.cloud&&<button className="secondary" disabled={busy} onClick={()=>void run(async()=>{const result=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"logout"})});if(!result.ok)throw Error("No se pudo cerrar la sesión.");setData(undefined);setSession(undefined);setRecovery(undefined);setLogin(true);})}>Cerrar sesión</button>}<label>Importar progreso JSON <input type="file" accept=".json,application/json" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file&&confirm('Se añadirán las sesiones y los repasos que falten y se aplicarán las preferencias del archivo. ¿Importar?'))void run(async()=>{update(await api<Dashboard>('','import',JSON.parse(await file.text())));setNotice('Progreso importado.');});}}/></label></div></section>
     <section className="panel"><h2>Fuentes oficiales externas</h2><ul>{practiceLinks.map(([label,url])=><li key={url}><a href={url} target="_blank" rel="noreferrer">{label}</a></li>)}</ul><p>Banco local de preguntas originales. Temario consultado el 24 de noviembre de 2026.</p></section></>}
     {tab===7&&stats&&<>
      <h1 className="section-title">Qué reforzar</h1>
@@ -275,15 +287,31 @@ export default function Home(){
      {recovery?.report&&<section className="panel"><h2>Itinerario de recuperación</h2><p>Consulta cada microlección y vuelve al informe para revisar la corrección y responder una pregunta de transferencia. Las preguntas con fallos quedan disponibles en el repaso.</p><div className="actions">{recovery.report.weak.map(i=><button className={lesson===i?'primary':'secondary'} aria-pressed={lesson===i} key={i} onClick={()=>setLesson(i)}>{objectives[i]}</button>)}</div><div className="actions"><button className="secondary" disabled={busy} onClick={()=>void resume(recovery.id)}>Volver a las correcciones</button><button className="ghost" onClick={()=>setRecovery(undefined)}>Cerrar itinerario</button></div></section>}
      <Academy selected={lesson} onSelect={setLesson} practice={practice}/>
     </>}
-    {tab===9&&<StudyPlan plan={data.plan} training={today} open={openLesson} settings={()=>navigate(6)}/>}
+    {tab===9&&<StudyPlan plan={data.plan} training={()=>navigate(15)} open={openLesson} settings={()=>navigate(6)}/>}
     {tab===10&&<Flashcards queue={data.cardQueue} busy={busy} rate={(id,rating)=>void run(async()=>update(await api<Dashboard>('','card',{id,rating,request:crypto.randomUUID()})))}/>}
     {tab===11&&<Labs practice={practice}/>}
     {tab===12&&<Knowledge map={data.map} open={openLesson} practice={practice}/>}
     {tab===13&&stats&&<section className="panel learn"><h1>Preparación para el examen</h1><p>{stats.verdict} · {stats.readiness}/100</p><h2>Qué mide el indicador</h2><ul>{stats.components.map(c=><li key={c.name}>{c.name} · {c.value}/100 · peso {c.weight} %</li>)}</ul><h2>Qué falta</h2><ul>{stats.requirements.map(r=><li key={r.text}>{r.met?'Cumplido':'Pendiente'} · {r.text}</li>)}</ul><button className="primary" onClick={()=>navigate(2)}>Preparar un simulacro</button></section>}
-    {tab===14&&<section className="panel learn"><h1>Certificaciones</h1><h2>AZ-900 · Azure Fundamentals</h2><p>Certificación activa. El temario consultado está vigente desde el 20 de julio de 2026.</p><p>{data.bank} preguntas de práctica · {data.reserved} reservadas para evaluación · {data.map.length} grupos de objetivos.</p><p>{data.reviewCandidates} pares candidatos a revisión por similitud textual.</p><p>AZ-104, SC-900 y otras certificaciones quedan pendientes de contenido y comprobación de vigencia.</p><a href={guide} target="_blank" rel="noreferrer">Ver guía oficial AZ-900</a></section>}
+    {tab===14&&<section className="panel learn"><h1>Certificaciones</h1><h2>AZ-900 · Azure Fundamentals</h2><p>Certificación activa. El temario consultado está vigente desde el 20 de julio de 2026.</p><p>{data.bank} preguntas de práctica · {data.reserved} reservadas para evaluación · {data.map.length} grupos de objetivos.</p><p>{data.reviewed} preguntas con revisión editorial registrada en esta versión. {data.reviewCandidates} pares candidatos a revisión por similitud textual.</p><p>AZ-104, SC-900 y otras certificaciones quedan pendientes de contenido y comprobación de vigencia.</p><a href={guide} target="_blank" rel="noreferrer">Ver guía oficial AZ-900</a></section>}
+    {tab===15&&<section className="panel learn"><h1>Mi entrenamiento de hoy</h1><p>{data.settings.minutes} minutos · {objectives[data.coach.objective]}</p>
+     <ol className="schedule">
+      <li><span>Recuperación activa · {data.coach.budget.recall} min</span><button className="secondary" onClick={()=>navigate(10)}>Repasar tarjetas</button></li>
+      <li><span>Microlección · {data.coach.budget.theory} min</span><button className="secondary" onClick={()=>openLesson(data.coach.objective)}>Estudiar {objectives[data.coach.objective]}</button></li>
+      <li><span>Preguntas · {data.coach.budget.practice} min</span><button className="primary" disabled={busy} onClick={()=>void launch('adaptive',{objective:data.coach.objective,minutes:data.coach.budget.practice,coached:true})}>Iniciar práctica de hoy</button></li>
+      <li><span>Aplicación · {data.coach.budget.apply} min</span><button className="secondary" onClick={()=>navigate(11)}>Resolver un caso de laboratorio</button></li>
+      <li><span>Consolidación · {data.coach.budget.finish} min</span><button className="secondary" onClick={()=>navigate(3)}>Consultar errores pendientes</button></li>
+     </ol>
+     {data.plan.calendar[0]?.mode==='mock'&&<p><button className="secondary" onClick={today}>Empezar el simulacro previsto</button></p>}
+     <h2>Esto es lo que has aprendido hoy</h2>
+     {data.coach.answered?<p>{data.coach.correct} aciertos de {data.coach.answered} respuestas en {data.coach.todayObjectives.map(i=>objectives[i]).join(', ')}.</p>:<p>Responde preguntas o entrega tu evaluación para ver evidencias aquí.</p>}
+     <p>{data.coach.recovered.length?'Recuperados hoy: '+data.coach.recovered.map(i=>objectives[i]).join(', '):'Aún sin nuevas evidencias de recuperación diferida hoy.'}</p>
+     <p>{data.cardQueue.length} tarjetas listas · {data.plan.pending.length} objetivos todavía pendientes de evaluación o refuerzo.</p>
+    </section>}
+    {tab===16&&<section className="panel learn"><h1>Errores que ya he superado</h1><p>El criterio exige acertar dos preguntas distintas de la fallada con confianza suficiente y demostrarlo de nuevo al menos un día después.</p>
+     {data.recovered.length?<ul>{data.recovered.map(item=><li key={item.objective}><button className="ghost" onClick={()=>openLesson(item.objective)}>{objectives[item.objective]} · {item.distinct} preguntas distintas</button></li>)}</ul>:<p>Todavía no hay evidencias de recuperación diferida en tus respuestas. Tras un fallo, estudia el concepto, aplica lo aprendido a otro caso y vuelve a repasarlo otro día.</p>}
+    </section>}
    </>}
    </div>
   </main>
  </div>;
 }
-

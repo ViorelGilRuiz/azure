@@ -6,10 +6,11 @@ playwright-report/
 *.tsbuildinfo
 data/
 .env*
+!.env.example
+.netlify/
 *.sqlite*
 *.db
 *.db-wal
 *.db-shm
 *.bak
 next-env.d.ts
-

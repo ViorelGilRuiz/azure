@@ -30,6 +30,27 @@ export function masteryEvidence(rows:Evidence[],now:number){
 const schedule=[
  [0,2,1,3,2,0,3],[4,5,6,7,6,5,7],[8,9,10,11,9,8,11],[2,6,7,11,8,9,10,5,3]
 ];
+export function recoveredObjectives(rows:Evidence[]){
+ const groups=new Map<number,Evidence[]>();
+ for(const event of [...rows].sort((a,b)=>a.started-b.started)){
+  const group=groups.get(event.objective)??[];
+  group.push(event);groups.set(event.objective,group);
+ }
+ return [...groups].flatMap(([objective,events])=>{
+  const lastMistake=events.findLastIndex(event=>!event.correct);
+  if(lastMistake<0)return [];
+  const mistake=events[lastMistake];
+  const evidence=events.slice(lastMistake+1).filter(event=>event.correct&&event.confidence>=2&&event.id!==mistake.id);
+  const ids=new Set(evidence.map(event=>event.id));
+  const later=evidence.find(event=>event.started-mistake.started>=day);
+  return ids.size>=2&&later?[{objective,failed:mistake.started,recovered:later.started,distinct:ids.size}]:[];
+ });
+}
+export function coachingBudget(minutes:number){
+  const recall=Math.max(1,Math.round(minutes/9)),theory=Math.max(2,Math.floor(minutes*2/9));
+  const apply=Math.max(1,Math.floor(minutes/9)),finish=Math.max(1,Math.floor(minutes/9));
+  return {recall,theory,practice:minutes-recall-theory-apply-finish,apply,finish};
+}
 export function dailyPlan(target:string,minutes:number,weak:number[],now:number){
  const today=dateKey(now);
  const days=Math.max(0,Math.round((Date.parse(target)-Date.parse(today))/day));
@@ -42,4 +63,3 @@ export function dailyPlan(target:string,minutes:number,weak:number[],now:number)
  const review=Math.floor(minutes*2/9), concepts=Math.floor(minutes/3), practice=Math.floor(minutes/3);
  return {days,calendar,minutes,review,concepts,practice,reflection:minutes-review-concepts-practice};
 }
-

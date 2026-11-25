@@ -1,7 +1,28 @@
-import {test,expect} from '@playwright/test';
+import {test,expect,type Page} from '@playwright/test';
 import {bank} from '../lib/bank';
 import {TEST_SIZE} from '../lib/catalog';
 import {mkdirSync} from 'node:fs';
+async function answerVisible(page:Page){
+ const id=await page.locator('.question').getAttribute('data-question-id');
+ const active=page.locator('[data-question-id="'+id+'"]');
+ const rows=active.locator('.matrix-row');
+ const matrix=await rows.count();
+ if(matrix){for(let i=0;i<matrix;i++)await rows.nth(i).locator('input').first().click();return;}
+ const ordering=active.locator('fieldset button.option');
+ const ordered=await ordering.count();
+ if(ordered){for(let i=0;i<ordered;i++)await ordering.nth(i).click();return;}
+ const options=active.locator('fieldset input');
+ const multiple=await options.first().getAttribute('type')==='checkbox';
+ const selection=multiple?Number((await active.locator('fieldset > legend').innerText()).match(/\d+/)?.[0]??2):1;
+ for(let i=0;i<selection;i++)await options.nth(i).click();
+}
+function wrongChoice(item:typeof bank[number]){
+ const keys=item.feedback.keys;
+ if(item.question.type==='ordenación')return [...keys].reverse();
+ const first=item.question.choices.find(option=>option.id===keys[0])!;
+ const distractor=item.question.choices.find(option=>!keys.includes(option.id)&&option.group===first.group)!.id;
+ return [...keys.slice(1),distractor];
+}
 
 test('evaluación inicial, reanudación y corrección tras la entrega',async({page})=>{
  await page.goto('/');
@@ -15,10 +36,7 @@ test('evaluación inicial, reanudación y corrección tras la entrega',async({pa
  await expect(page.getByText('Pregunta 1 de 40')).toBeVisible();
  await expect(page.getByRole('timer',{name:'Tiempo restante'})).toBeVisible();
  await expect(page.getByText('por pregunta pendiente.',{exact:false})).toBeVisible();
- const options=page.locator('fieldset input');
- const all=await options.count();
- const count=all>3?2:1;
- for(let i=0;i<count;i++)await options.nth(i).check();
+ await answerVisible(page);
  await expect(page.getByText('Pregunta 2 de 40')).toBeVisible();
  await expect(page.getByText('1 respondidas · 39 pendientes')).toBeVisible();
  await expect(page.getByText('Consultar Microsoft Learn')).toHaveCount(0);
@@ -48,13 +66,7 @@ test('el test rápido conserva la corrección y termina al seleccionar la últim
  await page.getByRole('button',{name:'Salir de pantalla limpia'}).click();
  for(let i=1;i<=TEST_SIZE;i++){
   await expect(page.getByText('Pregunta '+i+' de 40')).toBeVisible();
-  const fields=page.locator('fieldset input');
-  const multiple=await fields.first().getAttribute('type')==='checkbox';
-  await fields.first().check();
-  if(multiple){
-   await expect(page.getByText('Pregunta '+i+' de 40')).toBeVisible();
-   await fields.nth(1).check();
-  }
+  await answerVisible(page);
   if(i===1){
    await expect(page.getByText(/Ver explicación de la pregunta anterior/)).toBeVisible();
    await expect(page.getByText('Refuerzo prioritario')).toBeVisible();
@@ -90,8 +102,7 @@ test('un error aparece en la cola y un acierto inmediato no lo elimina',async({r
  const item=bank.find(entry=>entry.question.id===incorrect.questions[0].id)!;
  const qid=item.question.id;
  const keys=item.feedback.keys;
- const distractor=item.question.choices.find(option=>!keys.includes(option.id))!.id;
- const graded=await call('change',{id:incorrect.id,qid,answer:{choice:[...keys.slice(1),distractor],confidence:3,seconds:15},finish:true});
+ const graded=await call('change',{id:incorrect.id,qid,answer:{choice:wrongChoice(item),confidence:3,seconds:15},finish:true});
  expect(graded.answers[qid].feedback.correct).toBe(false);
  const review=await call('start',{mode:'review'});
  expect(review.questions.map((q:{id:string})=>q.id)).toContain(qid);
@@ -150,7 +161,7 @@ test('academia, tarjetas y mapa funcionan en móvil',async({page})=>{
  await page.getByRole('button',{name:'Flashcards',exact:true}).click();
  await page.getByRole('button',{name:'Ver respuesta'}).click();
  await page.getByRole('button',{name:'Bien',exact:true}).click();
- await expect(page.getByText(/23 tarjetas listas/)).toBeVisible();
+ await expect(page.getByText(/37 tarjetas listas/)).toBeVisible();
  await page.getByRole('button',{name:'Mapa de conocimientos',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Mapa de conocimientos'})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -172,3 +183,19 @@ test('las preguntas reservadas no aparecen en entrenamiento ni muestran solucion
  expect(results.report.firstSeen).toBe(1);
 });
 
+test('la matriz y el orden se corrigen según sus propias reglas',async({request})=>{
+ for(const id of ['az900-186','az900-188']){
+  const item=bank.find(entry=>entry.question.id===id)!;
+  const created=await (await request.post('/api/lab',{data:{action:'start',value:{mode:'adaptive',transfer:id}}})).json();
+  if(item.question.type==='matriz'){
+   const sameGroup=item.question.choices.filter(q=>q.group===item.question.choices[0].group).map(q=>q.id);
+   const invalid=await request.post('/api/lab',{data:{action:'change',value:{id:created.id,qid:id,answer:{choice:sameGroup,confidence:2,seconds:10}}}});
+   expect(invalid.status()).toBe(400);
+  }
+  const wrong=await (await request.post('/api/lab',{data:{action:'change',value:{id:created.id,qid:id,answer:{choice:wrongChoice(item),confidence:2,seconds:10},finish:true}}})).json();
+  expect(wrong.answers[id].feedback.correct).toBe(false);
+  const retry=await (await request.post('/api/lab',{data:{action:'start',value:{mode:'adaptive',transfer:id}}})).json();
+  const graded=await (await request.post('/api/lab',{data:{action:'change',value:{id:retry.id,qid:id,answer:{choice:item.feedback.keys,confidence:2,seconds:10},finish:true}}})).json();
+  expect(graded.answers[id].feedback.correct).toBe(true);
+ }
+});
