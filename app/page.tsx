@@ -3,7 +3,7 @@
 import {useEffect,useState,type FormEvent} from 'react';
 import {Activity,BookOpen,CalendarDays,ChartNoAxesCombined,Check,ChevronRight,Cloud,Flag,Flame,House,Layers,ListChecks,Settings as Gear,ShieldCheck,Timer,Trophy,Zap} from 'lucide-react';
 import {Area,AreaChart,CartesianGrid,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
-import {causes,dateKey,defaults,domainOf,domains,guide,modes,objectives,percent,reflections,TEST_SIZE,type Mode,type Session,type Settings} from '../lib/catalog';
+import {causes,defaults,domainOf,domains,guide,modes,objectives,percent,reflections,TEST_SIZE,type Mode,type Session,type Settings} from '../lib/catalog';
 import type {dashboard} from '../lib/store';
 import {reinforcement} from '../lib/reinforcement';
 import {Academy,Flashcards,Knowledge,Labs,StudyPlan} from './learning-panels';
@@ -100,10 +100,10 @@ export default function Home(){
   else void launch('adaptive',{objective:next?.objective,minutes:data.settings.minutes});
  }
  const stats=data?.stats;
- const days=Math.max(0,Math.ceil((Date.parse(settings.target)-Date.parse(dateKey(now||Date.parse(settings.target))))/86400000));
+ const days=data?.plan.days??0;
  const recommendation=stats?.recommendation??0;
  const awaitingInitial=!data?.history.some(h=>h.mode==='initial')&&!stats?.total;
- const phase=days>42?'Evaluación y práctica por dominio':days>21?'Práctica adaptativa y repetición espaciada':days>7?'Simulacros y refuerzo':'Consolidación y gestión del tiempo';
+ const phase=['Fundamentos','Servicios Azure','Administración','Preparación final'][data?.plan.calendar[0]?.phase??0];
  const q=session?.questions[session.position];
  const answer=q&&session?.answers[q.id];
  const deferred=session?.mode==='mock'||session?.mode==='initial';
@@ -232,7 +232,7 @@ export default function Home(){
      <div className="metrics"><Metric label="Días hasta tu objetivo" value={days}/><Metric label="Primer intento" value={stats?.unique?stats.freshRate+' %':'—'}/><Metric label="Preguntas repetidas" value={stats?.repeatCount?stats.repeatRate+' %':'—'}/><Metric label="Minutos respondiendo" value={Math.round((stats?.seconds??0)/60)}/><Metric label="Objetivos evaluados" value={(stats?.coverage??0)+' %'}/><Metric label="Objetivos dominados" value={data.map.filter(m=>m.status==='Dominado').length}/><Metric label="Flashcards disponibles" value={data.cardQueue.length}/><Metric label="Aciertos últimos 7 días" value={stats?.weekly?stats.weeklyRate+' %':'—'}/></div>
      <h2 className="section-title">Tu próxima sesión</h2>
      <div className="lower-grid">
-      <section className="panel"><div className="panel-icon"><CalendarDays size={20}/></div><h3>Plan de hoy</h3><p>{settings.minutes} min · {phase}</p><p>{stats?.total?'Objetivo recomendado: '+objectives[recommendation]:'Empieza con la evaluación inicial para personalizar tu plan.'}</p><button className="primary" disabled={busy} onClick={today}>Comenzar entrenamiento de hoy</button></section>
+      <section className="panel"><div className="panel-icon"><CalendarDays size={20}/></div><h3>Plan de hoy</h3><p>{settings.minutes} min · {phase}</p><p>{stats?.total?'Objetivo recomendado: '+objectives[recommendation]:'Empieza con la evaluación inicial para personalizar tu plan.'}</p>{data.plan.calendar.find(day=>day.mode==='mock')&&<p>Próximo simulacro previsto: {data.plan.calendar.find(day=>day.mode==='mock')?.date.split('-').reverse().join('/')}</p>}<button className="primary" disabled={busy} onClick={today}>Comenzar entrenamiento de hoy</button></section>
       <section className="panel"><div className="panel-icon"><Trophy size={20}/></div><h3>Desafío diario</h3><p>{data.dailyDone?'Desafío de hoy completado.':'40 preguntas variadas. Pon a prueba tu precisión.'}</p><button className="secondary" disabled={busy} onClick={()=>void launch('daily')}>{data.dailyDone?'Ver resultado':'Jugar desafío'}</button></section>
       <section className="panel"><div className="panel-icon"><BookOpen size={20}/></div><h3>Sesiones en curso</h3>{data.active.length?data.active.map(s=><button className="ghost" disabled={busy} key={s.id} onClick={()=>void resume(s.id)}>{modes[s.mode]} · {s.count}/{s.total}</button>):<p>Tus sesiones sin entregar aparecerán aquí.</p>}</section>
      </div>

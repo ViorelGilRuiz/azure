@@ -6,6 +6,7 @@ import {mkdirSync} from 'node:fs';
 test('evaluación inicial, reanudación y corrección tras la entrega',async({page})=>{
  await page.goto('/');
  if(process.env.AZURE_CAPTURE){
+  await page.setViewportSize({width:1440,height:1000});
   mkdirSync('docs',{recursive:true});
   await expect(page.getByRole('heading',{name:'Inicio',exact:true})).toBeVisible();
   await page.screenshot({path:'docs/inicio.png',fullPage:true,animations:'disabled'});
