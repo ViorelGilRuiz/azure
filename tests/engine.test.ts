@@ -10,11 +10,11 @@ describe('AZ-900',()=>{
  });
  it('explica cada distractor de los casos prácticos con una referencia directa',()=>{
   const cases=bank.filter(x=>x.reviewed==='2026-11-25');
-  expect(cases).toHaveLength(24);
+  expect(cases).toHaveLength(34);
   for(const {feedback,question} of cases){
    const alternatives=question.choices.filter(option=>!feedback.keys.includes(option.id));
    expect(new Set(alternatives.map(option=>feedback.choices[option.id])).size).toBe(alternatives.length);
-   expect(feedback.source).toMatch(/learn\.microsoft\.com\/en-us\/(azure|entra)\//);
+   expect(feedback.source).toMatch(/learn\.microsoft\.com\/en-us\/(azure|entra|training)\//);
   }
  });
  it('corrige una respuesta múltiple sin depender del orden y rechaza parciales',()=>{
@@ -55,8 +55,8 @@ describe('AZ-900',()=>{
  });
  it('recomienda presentarse solo cuando se cumplen los criterios de práctica',()=>{
   const now=Date.now();
-  const good:Evidence[]=Array.from({length:48},(_,i)=>({id:'p'+i,correct:true,objective:i%12,started:now,mode:'mock',confidence:2,seconds:30}));
-  const mocks=Array.from({length:3},()=>({mode:'mock',score:90,finished:now,count:40,fresh:5,onTime:true}));
+  const good:Evidence[]=Array.from({length:48},(_,i)=>({id:'p'+i,correct:true,objective:i%12,started:now,mode:'mock',independent:true,confidence:2,seconds:30}));
+  const mocks=Array.from({length:3},()=>({mode:'mock',score:90,finished:now,count:40,independent:true,onTime:true}));
   expect(summarize(good,mocks.slice(0,2),0,30).verdict).toMatch(/datos suficientes/);
   expect(summarize(good,mocks,0,30).verdict).toBe('Puedes plantearte presentarte');
   const weak=good.map(row=>({...row,correct:row.objective!==7}));
