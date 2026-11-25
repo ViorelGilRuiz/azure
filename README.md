@@ -1,4 +1,4 @@
-﻿# Azure Exam Lab 2.0
+# Azure Exam Lab 3.0
 
 Entrenamiento local en español para Microsoft Azure Fundamentals (AZ-900). Combina ejercicios originales, microlecciones, recuperación activa y simulacros. La fecha objetivo es provisional y se cambia en Configuración.
 
@@ -16,12 +16,12 @@ El lanzador instala dependencias y compila si faltan. La primera instalación re
 
 ## Funciones de aprendizaje
 
-- **Academia y mapa.** Doce microlecciones para los grupos de objetivos de AZ-900. El mapa enlaza las lecciones, los conceptos, las preguntas y las fuentes. Indica la evidencia disponible para cada grupo.
+- **Academia y mapa.** Doce microlecciones troncales y siete unidades específicas para los grupos de objetivos de AZ-900. El mapa enlaza las lecciones, los conceptos, las preguntas y las fuentes. Indica la evidencia disponible para cada grupo.
 - **Preparación.** El plan se recalcula con la fecha, la dedicación y los temas débiles. Mantiene una lista de conceptos pendientes. La fecha inicial es el 25 de diciembre de 2026 y la dedicación inicial es de 45 minutos.
 - **Recuperación.** Los informes muestran el rendimiento por dominio y objetivo, el tiempo, los errores recurrentes y el nivel de confianza. Desde las correcciones puedes clasificar errores, abrir la microlección y resolver un ejercicio de transferencia.
-- **Memoria.** Veinticuatro tarjetas de recuperación activa con historial SQLite. Los intervalos se ajustan con cuatro calificaciones. Las preguntas de test también alimentan el repaso de errores.
-- **Evaluación.** 179 preguntas de práctica y 31 reservadas. Los simulacros de 40 o 50 preguntas combinan preguntas reservadas no expuestas, cuando hay, con otras elegidas según los pesos de examen. El temporizador persiste y las soluciones se muestran tras la entrega.
-- **Aplicación profesional.** Tres simulaciones educativas locales sobre SMB, hospedaje web y protección de recursos. No crean recursos en Azure.
+- **Memoria.** Treinta y ocho tarjetas de recuperación activa con historial SQLite. Los intervalos se ajustan con cuatro calificaciones. Las preguntas de test también alimentan el repaso de errores.
+- **Evaluación.** 189 preguntas de práctica y 34 reservadas. Los simulacros de 40 o 50 preguntas combinan preguntas reservadas no expuestas, cuando hay, con otras elegidas según los pesos de examen. El temporizador persiste y las soluciones se muestran tras la entrega.
+- **Aplicación profesional.** Cinco simulaciones educativas locales sobre SMB, hospedaje web, protección de recursos, redundancia y VPN. No crean recursos en Azure.
 - **Analítica.** Aciertos en preguntas nuevas y repetidas, retención, adaptación por objetivo, informe de siete días y exportación CSV. Exam Readiness desglosa simulacros, dominio, retención, preguntas nuevas y tiempo. Es un criterio interno de preparación.
 
 ## Arquitectura y datos
@@ -30,7 +30,7 @@ El lanzador instala dependencias y compila si faltan. La primera instalación re
 - Motor de entrenamiento y aprendizaje en `lib/engine.ts` y `lib/learning.ts`. Lecciones y trazabilidad en `lib/academy.ts`. Los bancos de práctica y evaluación se cargan en el servidor.
 - SQLite con el adaptador nativo de Node y Drizzle. `exam_session` guarda las preguntas y respuestas de cada sesión. `study_settings` guarda las preferencias. `card_review` almacena los eventos de repaso y tiene un índice por tarjeta y fecha. El cálculo de dominio requiere preguntas distintas y evidencia de recuperación posterior.
 - La migración aditiva al esquema 2 crea el historial de tarjetas. Conserva las sesiones, el tema y los ajustes personalizados. Los antiguos valores predeterminados de objetivo y dedicación pasan a los valores de 2.0.
-- El banco conserva sus IDs por posición de origen. Las preguntas nuevas se añaden al final del fichero correspondiente. El control de calidad comprueba claves, cobertura, fuentes, duplicados exactos y candidatos por similitud léxica.
+- El banco almacena explícitamente IDs y dificultad. Los IDs históricos permanecen asociados a sus preguntas y respuestas. Algunas familias de variantes cercanas se identifican explícitamente. El control de calidad comprueba claves, cobertura, fuentes, duplicados exactos y candidatos por similitud léxica.
 
 ## Copias y restauración
 
@@ -60,4 +60,13 @@ Consulta del temario el 25 de noviembre de 2026. La guía de Microsoft indica ob
 - [Evaluación oficial de Microsoft Learn](https://aka.ms/AZ900-LearnPA)
 - [AI Skills Navigator](https://aka.ms/AZ900-PA)
 
-El alcance actual cubre los 12 grupos de objetivos con una lección por grupo. Quedan pendientes las lecciones granulares por servicio, alcanzar 500 preguntas, la auditoría editorial individual de todos los distractores históricos, los formatos de matrices, emparejamiento y ordenación, un banco suficiente para simulacros íntegramente independientes, y el histórico granular de dominio. El informe se exporta en CSV y el progreso en JSON. No se ha implementado una exportación PDF. AZ-900 es la única certificación activa.
+El alcance actual cubre los 12 grupos de objetivos con una lección por grupo. Quedan pendientes las lecciones granulares por servicio, alcanzar 650 preguntas, la auditoría editorial individual de todos los distractores históricos, los formatos de emparejamiento e interpretación de diagramas, un banco suficiente para simulacros íntegramente independientes, y las instantáneas diarias de dominio por concepto. El informe se exporta en CSV y el progreso en JSON. No se ha implementado una exportación PDF. AZ-900 es la única certificación activa.
+
+## Cambios en 3.0
+
+- Entrenador diario con presupuesto adaptable y registro de recuperación diferida. Los cortes de 7, 14 y 30 días se reconstruyen a partir de las respuestas persistidas.
+- Selección múltiple, matrices sí/no y ordenación con corrección propia. Se registró una revisión editorial de 13 preguntas nuevas; las restantes conservan su estado anterior.
+- Solo los simulacros completos, con preguntas reservadas revisadas de familias no vistas, aportan evidencia independiente. Hoy el banco admite simulacros mixtos y de repetición.
+- Candidato de acceso privado con Netlify y Supabase. Incluye PostgreSQL con RLS, verificación de versión en escrituras, inicio de sesión y recuperación de contraseña. La configuración falla de forma cerrada cuando faltan variables. La migración SQL se ha probado localmente con un motor PostgreSQL; la conexión al proyecto Supabase y al sitio Netlify de destino sigue pendiente.
+
+[Configuración cloud, migración y verificación de Netlify](docs/cloud.md)
