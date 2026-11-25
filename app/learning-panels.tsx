@@ -1,0 +1,48 @@
+'use client';
+import {useState} from 'react';
+import {cards,lessons} from '../lib/academy';
+import {domains,domainOf,objectives} from '../lib/catalog';
+import type {dashboard} from '../lib/store';
+
+type Dashboard=ReturnType<typeof dashboard>;
+type Practice=(objective:number)=>void;
+const date=(ms:number|null)=>ms?new Intl.DateTimeFormat('es-ES',{dateStyle:'medium',timeZone:'Europe/Madrid'}).format(ms):'Pendiente';
+export function Academy({selected,onSelect,practice}:{selected:number;onSelect:(id:number)=>void;practice:Practice}){
+ const lesson=lessons[selected];
+ return <div className="learn"><h1>Academia Azure</h1><div className="lesson-layout"><aside className="panel lesson-list" aria-label="Microlecciones">{domains.map((domain,i)=><div key={domain}><h3>{domain}</h3>{lessons.filter(l=>domainOf(l.id)===i).map(l=><button key={l.id} className="ghost" aria-pressed={l.id===selected} onClick={()=>onSelect(l.id)}>{l.title}</button>)}</div>)}</aside>
+ <article className="panel lesson" key={lesson.id}><span className="eyebrow">AZ-900 · Microlección</span><h2>{lesson.title}</h2><p className="muted">{lesson.topics}</p>
+ <h3>Qué es y cómo funciona</h3><p>{lesson.definition}</p><p>{lesson.mechanism}</p>
+ <h3>Cuándo elegirlo</h3><p>{lesson.use}</p>
+ <h3>Errores habituales</h3><p>{lesson.mistake}</p>
+ <h3>En tu trabajo de sistemas</h3><p>{lesson.example}</p>
+ {lesson.id===2&&<table className="learn-table"><thead><tr><th>Modelo</th><th>Ejemplo</th><th>Gestionas</th></tr></thead><tbody><tr><td>IaaS</td><td>VM Windows Server</td><td>Windows, aplicación, datos y accesos</td></tr><tr><td>PaaS</td><td>API Node.js en App Service</td><td>Código, datos y accesos</td></tr><tr><td>SaaS</td><td>Servicio de correo listo para usar</td><td>Configuración, datos y accesos</td></tr></tbody></table>}
+ {lesson.id===6&&<table className="learn-table"><thead><tr><th>Servicio o nivel</th><th>Pregunta que resuelve</th></tr></thead><tbody><tr><td>Azure Files</td><td>¿Necesito montar SMB?</td></tr><tr><td>Blob Storage</td><td>¿Consumo objetos por su interfaz?</td></tr><tr><td>ZRS</td><td>¿Quiero copias entre zonas de la misma región?</td></tr><tr><td>GRS y GZRS</td><td>¿Necesito una copia geográfica?</td></tr></tbody></table>}
+ <h3>Recupéralo de memoria</h3><p>{lesson.prompt}</p><details><summary>Comprobar respuesta</summary><p>{lesson.answer}</p></details>
+ <p><b>Regla práctica.</b> {lesson.rule}</p><div className="actions"><button className="primary" onClick={()=>practice(lesson.id)}>Entrenar este objetivo</button><a target="_blank" rel="noreferrer" href={lesson.source}>Microsoft Learn</a></div></article></div></div>;
+}
+export function Flashcards({queue,rate,busy}:{queue:Dashboard['cardQueue'];rate:(id:number,rating:number)=>void;busy:boolean}){
+ const [revealed,setRevealed]=useState<number>();
+ const review=queue[0];
+ const card=review&&cards[review.id];
+ return <section className="panel learn"><h1>Flashcards</h1><p>{queue.length} tarjetas listas para estudiar o repasar.</p>{card?<article className="flashcard" key={card.id}><span className="eyebrow">{objectives[card.objective]}</span><h2>{card.prompt}</h2>
+ {revealed===card.id?<><p>{card.answer}</p><div className="actions">{['No lo recuerdo','Difícil','Bien','Fácil'].map((label,i)=><button key={label} className="secondary" disabled={busy} onClick={()=>{setRevealed(undefined);rate(card.id,i);}}>{label}</button>)}</div></>:<button className="primary" onClick={()=>setRevealed(card.id)}>Ver respuesta</button>}</article>:<p>Estás al día. Las tarjetas volverán cuando toque repasarlas.</p>}</section>;
+}
+export function Knowledge({map,open,practice}:{map:Dashboard['map'];open:(i:number)=>void;practice:Practice}){
+ return <section className="learn"><h1>Mapa de conocimientos</h1>{domains.map((domain,i)=><section className="panel" key={domain}><h2>{domain}</h2><div className="objective-grid">{map.filter(m=>domainOf(m.objective)===i).map(m=><article key={m.objective}><h3>{m.lesson}</h3><p className={'mastery '+(m.status==='Dominado'?'mastered':m.status==='Necesita refuerzo'?'weak':m.status==='Sin evaluar'?'unseen':'learning')}>{m.status} · {m.value}/100</p><p>{m.distinct} distintas de {m.questions} disponibles · {m.accuracy} % reciente · {m.retained} retenidas</p><p>{m.concepts.join(' · ')}</p><p>Último: {date(m.last)} · próximo: {date(m.next)}</p><p>{m.cards.length} flashcards · <a href={m.source} rel="noreferrer" target="_blank">Fuente</a></p><div className="actions"><button className="secondary" onClick={()=>open(m.objective)}>Microlección</button><button className="secondary" onClick={()=>practice(m.objective)}>Practicar</button></div></article>)}</div></section>)}</section>;
+}
+export function StudyPlan({plan,training,open,settings}:{plan:Dashboard['plan'];training:()=>void;open:(i:number)=>void;settings:()=>void}){
+ const phase=['Fundamentos','Servicios Azure','Administración','Preparación final'];
+ return <section className="learn"><h1>Plan de estudio</h1><section className="panel"><h2>Entrenamiento de hoy</h2><p>{plan.days} días hasta el objetivo provisional · {plan.minutes} minutos previstos.</p><p>{plan.review} min de repaso · {plan.concepts} min de conceptos · {plan.practice} min de preguntas · {plan.reflection} min de revisión.</p><div className="actions"><button className="primary" onClick={training}>Comenzar entrenamiento de hoy</button><button className="secondary" onClick={settings}>Ajustar fecha y dedicación</button></div></section>
+ <section className="panel"><h2>Objetivos pendientes</h2>{plan.pending.length?<ul>{plan.pending.map(id=><li key={id}><button className="ghost" onClick={()=>open(id)}>{objectives[id]}</button></li>)}</ul>:<p>Los objetivos iniciales tienen evidencias de práctica. Sigue con repasos y simulacros.</p>}</section>
+ <section className="panel"><h2>Próximos días</h2><ol className="schedule">{plan.calendar.map(day=><li key={day.date}><time dateTime={day.date}>{day.date.slice(8)}/{day.date.slice(5,7)}</time><span>{phase[day.phase]} · {day.mode==='mock'?'Simulacro':objectives[day.objective]}</span><button className="ghost" onClick={()=>open(day.objective)}>Ver microlección</button></li>)}</ol></section></section>;
+}
+const labs=[
+ {name:'Compartir documentos con Windows Server',context:'Un despacho migra su carpeta compartida a Azure. Sus scripts siguen abriendo una ruta UNC.',diagram:'Windows Server → SMB → almacenamiento de Azure',requirement:'Conservar acceso a archivos mediante SMB.',options:['Blob Storage','Azure Files','Queue Storage'],key:1,why:'Azure Files ofrece recursos compartidos SMB. Blob almacena objetos y Queue transporta mensajes.',source:'https://learn.microsoft.com/en-us/azure/storage/files/storage-files-introduction',objective:6},
+ {name:'Hospedar una API Node.js',context:'Un equipo publica una API interna desde su repositorio. Quiere mantener el código y delegar la operación del sistema operativo.',diagram:'Repositorio → plataforma web → API',requirement:'Desplegar código web sin mantener Windows o Linux de una VM.',options:['Azure Virtual Desktop','Azure Virtual Machines','Azure App Service'],key:2,why:'App Service es hospedaje administrado para aplicaciones web y API. La VM conserva la gestión del invitado y Virtual Desktop publica escritorios.',source:'https://learn.microsoft.com/es-es/training/modules/describe-azure-compute-networking-services/',objective:4},
+ {name:'Proteger un recurso de producción',context:'El equipo de infraestructura debe cambiar parámetros, pero quiere impedir que se elimine accidentalmente el recurso.',diagram:'Operador → plano de control → recurso protegido',requirement:'Permitir modificaciones y bloquear el borrado por el plano de control.',options:['Bloqueo CanNotDelete','Bloqueo ReadOnly','Etiqueta producción'],key:0,why:'CanNotDelete protege del borrado y conserva las modificaciones. ReadOnly también restringe cambios. Una etiqueta solo clasifica.',source:'https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/lock-resources',objective:9}
+];
+export function Labs({practice}:{practice:Practice}){
+ const [answers,setAnswers]=useState<Record<number,number>>({});
+ return <section className="learn"><h1>Laboratorios</h1><p>Simulaciones educativas locales. Puedes completar cada decisión sin una suscripción Azure.</p>{labs.map((lab,i)=><article className="panel" key={lab.name}><h2>{lab.name}</h2><p>{lab.context}</p><p className="diagram">{lab.diagram}</p><p>{lab.requirement}</p><fieldset><legend>Selecciona un servicio o control</legend>{lab.options.map((option,j)=><label className="option" key={option}><input type="radio" name={'lab'+i} checked={answers[i]===j} onChange={()=>setAnswers({...answers,[i]:j})}/>{option}</label>)}</fieldset>{answers[i]!==undefined&&<div className="feedback" role="status"><b>{answers[i]===lab.key?'Decisión correcta':'Revisa la elección'}</b><p>{lab.why}</p><div className="actions"><a href={lab.source} rel="noreferrer" target="_blank">Referencia oficial</a><button className="secondary" onClick={()=>practice(lab.objective)}>Practicar el concepto</button></div></div>}</article>)}</section>;
+}
+

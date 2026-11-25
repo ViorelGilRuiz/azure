@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.npm-cache/
+test-results/
+playwright-report/
+*.tsbuildinfo
+data/
+.env*
+*.sqlite*
+*.db
+*.db-wal
+*.db-shm
+*.bak
+next-env.d.ts
+
