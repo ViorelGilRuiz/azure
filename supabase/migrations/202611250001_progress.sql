@@ -33,4 +33,3 @@ $$;
 revoke execute on function public.azure_save_progress(integer,jsonb) from public, anon;
 grant execute on function public.azure_save_progress(integer,jsonb) to authenticated;
 commit;
-

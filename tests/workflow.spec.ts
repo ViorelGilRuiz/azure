@@ -199,4 +199,3 @@ test('la matriz y el orden se corrigen según sus propias reglas',async({request
   expect(graded.answers[id].feedback.correct).toBe(true);
  }
 });
-

@@ -17,4 +17,3 @@ export type Answer = {choice:string[]; confidence:number; seconds:number; at?:nu
 export type LearningReport={unanswered:number;previous:number|null;firstSeen:number;overconfidence:number;guesses:number;recurring:number;causes:{index:number;count:number}[];domains:{index:number;correct:number;total:number}[];objectives:{index:number;correct:number;total:number}[];weak:number[]};
 export type ExamKind='independent'|'mixed'|'repeat'|'diagnostic';
 export type Session = {id:string; mode:Mode; examKind?:ExamKind; questions:PublicQuestion[]; answers:Record<string,Answer>; skipped?:Record<string,Feedback>; report?:LearningReport; flags:string[]; position:number; deadline:number|null; finished:number|null; started:number};
-

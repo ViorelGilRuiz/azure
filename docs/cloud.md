@@ -32,4 +32,3 @@ Antes de integrar en `master`, comprobar la equivalencia y repetir las pruebas d
 ## Límites
 
 El almacenamiento cloud es una instantánea JSONB por usuario con revisión para evitar pérdida de escrituras concurrentes. La función valida el tamaño y limita la aplicación a 10 MiB por documento persistido. Las políticas RLS restringen las filas al usuario autenticado. La app es para acceso privado y el proveedor administra el límite de solicitudes de autenticación. No se ha ejecutado esta migración contra un proyecto Supabase autorizado para el sitio ni se ha efectuado un despliegue 3.0.
-

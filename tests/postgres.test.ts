@@ -44,4 +44,3 @@ it('aplica la migración PostgreSQL y aísla dos usuarios con RLS y revisiones',
   expect((await state()).rows[0].revision).toBe(2);
  }finally{await pg.close();}
 });
-

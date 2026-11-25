@@ -63,4 +63,3 @@ export function dailyPlan(target:string,minutes:number,weak:number[],now:number)
  const review=Math.floor(minutes*2/9), concepts=Math.floor(minutes/3), practice=Math.floor(minutes/3);
  return {days,calendar,minutes,review,concepts,practice,reflection:minutes-review-concepts-practice};
 }
-

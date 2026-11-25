@@ -14,4 +14,3 @@ data/
 *.db-shm
 *.bak
 next-env.d.ts
-

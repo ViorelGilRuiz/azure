@@ -29,4 +29,3 @@ export function Account({onSignedIn}:{onSignedIn:()=>Promise<void>}){
  {message&&<p role="status">{message}</p>}
  </section>;
 }
-

@@ -11,4 +11,3 @@ export function GET(){
   return NextResponse.json({status:'configuration-missing',mode:'cloud'},{status:503,headers:{'Cache-Control':'no-store'}});
  }
 }
-

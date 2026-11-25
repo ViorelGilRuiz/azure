@@ -65,4 +65,3 @@ describe('AZ-900',()=>{
   expect(review.recommendation).toBe(7);
  });
 });
-

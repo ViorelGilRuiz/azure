@@ -51,4 +51,3 @@ describe('AZ-900 3.0',()=>{
   expect((await action('https://azurecert.netlify.app')).status).toBe(401);
  });
 });
-

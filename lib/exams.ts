@@ -23,4 +23,3 @@ export function examEvidence(items:ExamItem[],kind:ExamKind|undefined,seen:Set<s
  const families=new Set(items.map(q=>q.family));
  return families.size===items.length&&items.every(q=>q.reserved&&q.reviewed&&!seen.has(q.family));
 }
-

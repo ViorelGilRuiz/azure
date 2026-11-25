@@ -17,4 +17,3 @@ const changedReviews=(source.reviews??[]).filter(review=>!equal(review,targetRev
 const preferences=equal(source.settings,target.settings);
 console.log(JSON.stringify({sessionsChecked:source.sessions.length,changed,changedReviews,preferences},null,2));
 if(changed||changedReviews||!preferences)process.exitCode=1;
-

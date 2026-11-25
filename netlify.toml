@@ -6,4 +6,3 @@
   AZURE_DEPLOYMENT = "cloud"
 [functions]
   included_files = ["lib/questions.txt", "lib/reserved.txt"]
-

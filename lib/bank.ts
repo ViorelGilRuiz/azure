@@ -104,4 +104,3 @@ export function similarQuestions(threshold=.72){
 }
 validateBank();
 export const byId=new Map(allQuestions.map(item=>[item.question.id,item]));
-

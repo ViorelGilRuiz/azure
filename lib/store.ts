@@ -312,4 +312,3 @@ export async function backupProgress(){
   try{await backup(connection().sqlite,target);return readFileSync(target);}
   finally{try{unlinkSync(target);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}}
 }
-

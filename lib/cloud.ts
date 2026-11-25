@@ -103,4 +103,3 @@ export async function cloudProgress<T>(req:Request,action:()=>T){
  }
  throw new CloudError(409,'El progreso cambió en otro dispositivo. Vuelve a intentarlo.');
 }
-

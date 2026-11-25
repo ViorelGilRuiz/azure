@@ -38,4 +38,3 @@ export const cards=[...originalCards,...units.flatMap((unit,index)=>[
  {id:25+index*2,objective:unit.objective,prompt:'Explica cuándo descartar '+unit.title.toLowerCase()+'.',answer:unit.avoid}
 ])];
 export const coverageMap=lessons.map(l=>({objective:l.id,lesson:l.title,concepts:l.topics.split(' · '),cards:cards.filter(c=>c.objective===l.id).map(c=>c.id),source:l.source}));
-
